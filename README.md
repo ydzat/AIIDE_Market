@@ -1,3 +1,10 @@
+<!--
+ * @Author: @ydzat
+ * @Date: 2025-09-04 20:46:02
+ * @LastEditors: @ydzat
+ * @LastEditTime: 2025-09-04 20:52:18
+ * @Description: 
+-->
 # AI-IDE 插件市场
 
 这是AI-IDE的官方插件市场仓库，管理所有已注册的插件信息。
