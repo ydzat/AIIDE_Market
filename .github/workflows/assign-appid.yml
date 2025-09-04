@@ -1,0 +1,142 @@
+name: 自动分配AppID
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  assign-appid:
+    if: contains(github.event.label.name, 'approved')
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        token: ${{ secrets.GITHUB_TOKEN }}
+        
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        
+    - name: Extract repository URL from issue
+      id: extract-repo
+      run: |
+        # 从issue body中提取仓库链接
+        REPO_URL=$(echo "${{ github.event.issue.body }}" | grep -oP 'https://github\.com/[^/]+/[^/\s]+' | head -1)
+        echo "repository_url=$REPO_URL" >> $GITHUB_OUTPUT
+        echo "Found repository: $REPO_URL"
+        
+    - name: Assign AppID and update registry
+      run: |
+        node << 'EOF'
+        const fs = require('fs');
+        const path = require('path');
+        
+        // 读取当前注册表
+        const registryPath = 'registry.json';
+        let registry;
+        
+        try {
+          registry = JSON.parse(fs.readFileSync(registryPath, 'utf8'));
+        } catch (error) {
+          console.error('Error reading registry:', error);
+          process.exit(1);
+        }
+        
+        // 获取仓库URL和issue信息
+        const repositoryUrl = process.env.REPOSITORY_URL || '${{ steps.extract-repo.outputs.repository_url }}';
+        const issueNumber = '${{ github.event.issue.number }}';
+        const submittedBy = '${{ github.event.issue.user.login }}';
+        const approvedBy = '${{ github.actor }}';
+        const currentTime = new Date().toISOString();
+        
+        if (!repositoryUrl) {
+          console.error('No repository URL found in issue');
+          process.exit(1);
+        }
+        
+        // 检查是否已经存在该仓库
+        const existingPlugin = Object.values(registry.plugins || {}).find(
+          plugin => plugin.repository === repositoryUrl
+        );
+        
+        if (existingPlugin) {
+          console.log('Plugin already exists with AppID:', existingPlugin.appId);
+          process.exit(0);
+        }
+        
+        // 分配新的AppID
+        const newAppId = String(registry.nextAppId || 1);
+        
+        // 添加新插件
+        if (!registry.plugins) registry.plugins = {};
+        
+        registry.plugins[newAppId] = {
+          appId: newAppId,
+          repository: repositoryUrl,
+          submittedBy: submittedBy,
+          submittedAt: currentTime,
+          status: 'approved',
+          approvedBy: approvedBy,
+          approvedAt: currentTime,
+          issueNumber: parseInt(issueNumber)
+        };
+        
+        // 更新nextAppId和lastUpdated
+        registry.nextAppId = parseInt(newAppId) + 1;
+        registry.lastUpdated = currentTime;
+        
+        // 写回文件
+        fs.writeFileSync(registryPath, JSON.stringify(registry, null, 2));
+        
+        console.log(`Assigned AppID ${newAppId} to ${repositoryUrl}`);
+        
+        // 输出信息供后续步骤使用
+        console.log(`::set-output name=app_id::${newAppId}`);
+        console.log(`::set-output name=repository_url::${repositoryUrl}`);
+        EOF
+      env:
+        REPOSITORY_URL: ${{ steps.extract-repo.outputs.repository_url }}
+        
+    - name: Commit changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add registry.json
+        git commit -m "Auto-assign AppID for plugin submission #${{ github.event.issue.number }}"
+        git push
+        
+    - name: Comment on issue
+      uses: actions/github-script@v7
+      with:
+        script: |
+          const appId = '${{ steps.assign-appid.outputs.app_id }}';
+          const repoUrl = '${{ steps.assign-appid.outputs.repository_url }}';
+          
+          github.rest.issues.createComment({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            body: `🎉 插件已成功添加到市场！
+            
+**分配的AppID**: \`${appId}\`
+**仓库链接**: ${repoUrl}
+
+插件现在可以在AI-IDE插件市场中找到。用户可以通过搜索或浏览来发现和安装你的插件。
+
+感谢你的贡献！🚀`
+          });
+          
+    - name: Close issue
+      uses: actions/github-script@v7
+      with:
+        script: |
+          github.rest.issues.update({
+            issue_number: context.issue.number,
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            state: 'closed',
+            labels: ['plugin-submission', 'completed']
+          });

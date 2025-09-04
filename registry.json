@@ -1,0 +1,16 @@
+{
+  "version": "1.0.0",
+  "lastUpdated": "2025-09-04T18:30:00Z",
+  "nextAppId": 2,
+  "plugins": {
+    "1": {
+      "appId": "1",
+      "repository": "https://github.com/ydzat/HelloWorldPlugin.git",
+      "submittedBy": "ydzat",
+      "submittedAt": "2024-01-01T00:00:00Z",
+      "status": "approved",
+      "approvedBy": "admin",
+      "approvedAt": "2024-01-01T12:00:00Z"
+    }
+  }
+}
